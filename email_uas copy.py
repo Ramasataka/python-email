@@ -1,7 +1,6 @@
 import mysql.connector
 import tkinter as tk
 from tkinter import *
-from tkinter import ttk
 import os
 from dotenv import load_dotenv
 import imaplib
@@ -90,52 +89,36 @@ def show_employee_dashboard():
     label_inbox = tk.Label(root, text="Inbox updated", font=("Helvetica", 20))
     label_inbox.pack(pady=50)
 
-    # Create Treeview
-    inboxlist = ttk.Treeview(root, columns=("from", "subject", "time"), show="headings", height=15)
-    inboxlist.pack(side=LEFT, fill=BOTH, expand=True)
-
-    style = ttk.Style()
-    style.configure("Treeview", rowheight=30)  # Adds space between rows
-
-    # Define columns
-    inboxlist.heading("from", text="From")
-    inboxlist.heading("subject", text="Subject")
-    inboxlist.heading("time", text="Time")
-
-    inboxlist.column("from", width=150)
-    inboxlist.column("subject", width=300)
-    inboxlist.column("time", width=100)
+    inbox_list = tk.Listbox(root, height=15)
+    inbox_list.delete(0, END)
 
     email_ids = list(range(len(emails)))  # Buat daftar indeks untuk email
-    for index, email in enumerate(emails):
-        inboxlist.insert("", END, iid=email_ids[index],values=(email["from"], email["subject"], email["time"]))
+    for email in emails:
+        inbox_list.insert(END, email)
+    inbox_list.pack(fill=BOTH, expand=True, side=LEFT)
 
-    scrollbar = tk.Scrollbar(root, orient=VERTICAL, command=inboxlist.yview)
+    scrollbar = tk.Scrollbar(root, orient=VERTICAL, command=inbox_list.yview)
     scrollbar.pack(side=RIGHT, fill=Y)
-    inboxlist.config(yscrollcommand=scrollbar.set)
+    inbox_list.config(yscrollcommand=scrollbar.set)
 
-    pagenation_button = tk.Button(root, text="previous", font=("Helvetica", 14), command=show_send_email_screen)
-    pagenation_button.pack(pady=20)
 
-    pagenation_button = tk.Button(root, text="next", font=("Helvetica", 14), command=show_send_email_screen)
-    pagenation_button.pack(pady=20)
 
     def on_select(event):
-    # Get the selected row(s)
-        selection = inboxlist.selection()  # This gets the selected row(s) in Treeview
+        # Ambil indeks item yang dipilih
+        selection = event.widget.curselection()
         if selection:
-            selected_item = selection[0]
-            email_ids.reverse()
-            email_id = email_ids.index(int(selected_item)) + 1 # Get the ID of the selected row
+            index = selection[0]
+            email_id = email_ids[index]
+            email_id = str(email_id).strip()
             print(email_id)
-            show_email_messages(mail, email_id)
+            show_email_messages(mail, email_id)  # Panggil fungsi untuk menampilkan isi email
 
-    inboxlist.bind("<<TreeviewSelect>>", on_select)
+    inbox_list.bind("<<ListboxSelect>>", on_select)
 
 
 def access_email(email_user, email_pass):
     try:
-        mail = imaplib.IMAP4_SSL(os.getenv("IMAP_SERVER"), os.getenv("IMAP_PORT"))
+        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
         mail.login(email_user, email_pass)
         return mail
     except Exception as e:
@@ -146,28 +129,16 @@ def fetch_inbox(mail):
         mail.select("inbox")
         _, search_data = mail.search(None, "ALL")
         email_ids = search_data[0].split()
-        print(f"Email IDs: {email_ids}") 
 
         emails = []
         for e_id in email_ids:
             e_id = e_id.decode()
-            print(f"Fetching email with ID: {e_id}")
             _, data = mail.fetch(e_id, "(RFC822)")
-            if _ == "OK":
-                raw_email = data[0][1]  # Raw email data from fetch
-                msg = email.message_from_bytes(raw_email)
-
-                # Extract email details
-                subject = msg["subject"]
-                sender = msg["from"]
-                # If you have time info, extract it here (for example, 'Date' field)
-                time = msg["date"]  # You can format it based on your needs
-                emails.append({"from": f"{sender}", "subject": f"{subject}", f"time": {time}})
-            else:
-                print(f"Failed to fetch email with ID: {e_id}")  
-        
-        # emails.sort(key=lambda x: datetime.strptime(x['time'], "%I:%M %p"), reverse=True)
-        emails.reverse()
+            raw_email = data[0][1]
+            msg = email.message_from_bytes(raw_email)
+            subject = msg["subject"]
+            sender = msg["from"]
+            emails.append(f"{sender} - {subject}")
         print(email_ids)
         return emails
     except Exception as e:

@@ -34,7 +34,7 @@ CREATE TABLE `users` (
   `email` varchar(255) NOT NULL,
   `smtp_password` varchar(255) NOT NULL,
   `role` enum('admin','employee') NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+);
 
 --
 -- Dumping data for table `users`

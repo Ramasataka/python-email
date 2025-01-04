@@ -87,8 +87,36 @@ def show_employee_dashboard():
     global mail
     emails = fetch_inbox(mail)
 
+    # Pagination variables
+    emails_per_page = 5
+    current_page = 0
+    total_pages = (len(emails) - 1) // emails_per_page + 1
+    
+
     label_inbox = tk.Label(root, text="Inbox updated", font=("Helvetica", 20))
-    label_inbox.pack(pady=50)
+    label_inbox.pack(pady=20)
+
+# Pagination controls
+    def next_page():
+        nonlocal current_page
+        if current_page < total_pages - 1:
+            current_page += 1
+            update_inbox()
+
+    def previous_page():
+        nonlocal current_page
+        if current_page > 0:
+            current_page -= 1
+            update_inbox()
+
+    frame_buttons = tk.Frame(root)
+    frame_buttons.pack()
+    button_previous = tk.Button(frame_buttons, text="Previous", font=("Helvetica", 12), command=previous_page)
+    button_previous.pack(side=LEFT, padx=5, pady=10)
+
+    button_next = tk.Button(frame_buttons, text="Next", font=("Helvetica", 12), command=next_page)
+    button_next.pack(side=LEFT, padx=5, pady=10)
+
 
     # Create Treeview
     inboxlist = ttk.Treeview(root, columns=("from", "subject", "time"), show="headings", height=15)
@@ -106,31 +134,32 @@ def show_employee_dashboard():
     inboxlist.column("subject", width=300)
     inboxlist.column("time", width=100)
 
-    email_ids = list(range(len(emails)))  # Buat daftar indeks untuk email
-    for index, email in enumerate(emails):
-        inboxlist.insert("", END, iid=email_ids[index],values=(email["from"], email["subject"], email["time"]))
+    def update_inbox():
+        inboxlist.delete(*inboxlist.get_children())  # Clear existing rows
+        start_index = current_page * emails_per_page
+        end_index = start_index + emails_per_page
+        for index, email in enumerate(emails[start_index:end_index], start=start_index):
+            inboxlist.insert("", END, values=(email["from"], email["subject"], email["time"]))
 
-    scrollbar = tk.Scrollbar(root, orient=VERTICAL, command=inboxlist.yview)
-    scrollbar.pack(side=RIGHT, fill=Y)
-    inboxlist.config(yscrollcommand=scrollbar.set)
+    update_inbox()
 
-    pagenation_button = tk.Button(root, text="previous", font=("Helvetica", 14), command=show_send_email_screen)
-    pagenation_button.pack(pady=20)
+        
 
-    pagenation_button = tk.Button(root, text="next", font=("Helvetica", 14), command=show_send_email_screen)
-    pagenation_button.pack(pady=20)
+    # email_ids = list(range(len(emails)))  # Buat daftar indeks untuk email
+    # for index, email in enumerate(emails):
+    #     inboxlist.insert("", END, iid=email_ids[index],values=(email["from"], email["subject"], email["time"]))
 
     def on_select(event):
-    # Get the selected row(s)
-        selection = inboxlist.selection()  # This gets the selected row(s) in Treeview
+        selection = inboxlist.selection()
         if selection:
             selected_item = selection[0]
-            email_ids.reverse()
-            email_id = email_ids.index(int(selected_item)) + 1 # Get the ID of the selected row
+            email_id = len(emails) - (current_page * emails_per_page + int(inboxlist.index(selected_item)))
             print(email_id)
             show_email_messages(mail, email_id)
 
     inboxlist.bind("<<TreeviewSelect>>", on_select)
+
+
 
 
 def access_email(email_user, email_pass):
