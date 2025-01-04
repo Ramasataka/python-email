@@ -3,6 +3,7 @@ import tkinter as tk
 import imaplib
 import email
 import os
+import io
 import smtplib
 from tkinter import messagebox
 from tkinter import filedialog
@@ -38,6 +39,7 @@ def connect_to_db():
     except mysql.connector.Error as err:
         print(f"Error: {err}") 
         return None
+    
 def login(username, password):
     conn = connect_to_db()
     cursor = conn.cursor()
@@ -47,6 +49,7 @@ def login(username, password):
     conn.close()
     print(user)
     return user
+
 
 def fetch_employees():
     conn = connect_to_db()
@@ -145,7 +148,6 @@ def read_sent_email_history():
             imap.logout()
             return
 
-        # Cari semua email di folder "Sent Mail"
         status, messages = imap.search(None, "ALL")
         if status != "OK":
             messagebox.showerror("Error", "Gagal mencari email di folder 'Sent Mail'.")
@@ -191,6 +193,7 @@ def read_sent_email_history():
 
 
 def show_email_detail(email_data):
+    print(email_data)
     for widget in root.winfo_children():
         widget.destroy()
 
@@ -221,33 +224,85 @@ def show_email_detail(email_data):
     scrollbar.pack(side="right", fill="y")
 
     canvas.configure(yscrollcommand=scrollbar.set)
-    canvas.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
+    canvas.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
     frame_content = tk.Frame(canvas)
     canvas.create_window((0, 0), window=frame_content, anchor="nw")
 
+    email_body = ""
+    attachments = []
+
+    # Parsing konten email
     if msg.is_multipart():
         for part in msg.walk():
             content_type = part.get_content_type()
-            if content_type == "text/plain":
-                body = part.get_payload(decode=True).decode()
-                text_body = tk.Text(frame_content, height=15, width=50, font=("Helvetica", 12), wrap="word")
-                text_body.insert("1.0", body)
-                text_body.configure(state="disabled")
-                text_body.pack(pady=10, fill="both", expand=True)
+            content_disposition = str(part.get("Content-Disposition"))
+
+
+            if "attachment" in content_disposition:
+                filename = part.get_filename()
+                if filename:
+                    # Store attachment in memory
+                    attachment_data = io.BytesIO(part.get_payload(decode=True))
+                    attachments.append((filename, attachment_data))
+
+            elif content_type == "text/plain":
+                email_body = part.get_payload(decode=True).decode()
+            elif content_type == "text/html":
+                email_body = part.get_payload(decode=True).decode()
     else:
-        body = msg.get_payload(decode=True).decode()
-        text_body = tk.Text(frame_content, height=15, width=50, font=("Helvetica", 12), wrap="word")
-        text_body.insert("1.0", body)
-        text_body.configure(state="disabled")
-        text_body.pack(pady=10, fill="both", expand=True)
+        content_type = msg.get_content_type()
+        if content_type == "text/plain":
+            email_body = msg.get_payload(decode=True).decode()
+        elif content_type == "text/html":
+            email_body = msg.get_payload(decode=True).decode()
+
+    # Tampilkan body email (text atau HTML)
+    text_body = tk.Text(frame_content, height=15, width=50, font=("Helvetica", 12), wrap="word")
+    text_body.insert("1.0", email_body)
+    text_body.configure(state="disabled")
+    text_body.pack(pady=10, fill="both", expand=True)
+
+    # Tampilkan lampiran jika ada
+    if attachments:
+            label_attachments = tk.Label(frame_content, text="Attachments:", font=("Helvetica", 14))
+            label_attachments.pack(pady=5)
+            for filename, attachment_data in attachments:
+                button_open = tk.Button(
+                    frame_content,
+                    text=filename,
+                    font=("Helvetica", 12),
+                    command=lambda data=attachment_data: open_attachment(data, filename)
+                )
+                button_open.pack(pady=2)
 
     button_back = tk.Button(root, text="Kembali", font=("Helvetica", 12), command=show_read_email_screen)
     button_back.pack(pady=10)
 
+
+
+def open_attachment(attachment_data, filename):
+    try:
+        # Dialog untuk memilih lokasi penyimpanan file
+        save_path = filedialog.asksaveasfilename(
+            defaultextension=os.path.splitext(filename)[1],
+            filetypes=[("All Files", "*.*"), ("Images", "*.jpg;*.png;*.jpeg")],
+            initialfile=filename,
+            title="Simpan File Lampiran"
+        )
+        
+        # Jika pengguna tidak memilih lokasi, batalkan
+        if not save_path:
+            return
+        
+        # Simpan file di lokasi yang dipilih pengguna
+        with open(save_path, "wb") as file:
+            file.write(attachment_data.getbuffer())
+        
+        # Buka file
+        os.startfile(save_path)  # Hanya untuk Windows
+    except Exception as e:
+        messagebox.showerror("Error", f"Gagal membuka lampiran: {e}")
 
 def attempt_login():
     global logged_in_user
@@ -283,6 +338,9 @@ def show_admin_dashboard():
     read_history_button = tk.Button(root, text="Read History Send Email", font=("Helvetica", 14), command=read_sent_email_history)
     read_history_button.pack(pady=20)
 
+    add_employee_button = tk.Button(root, text="Tambah Karyawan Baru", font=("Helvetica", 14), command=show_add_employee_page)
+    add_employee_button.pack(pady=20)
+
     logout_button = tk.Button(root, text="Logout", font=("Helvetica", 12), command=logout)
     logout_button.pack(pady=10, side="bottom")
 
@@ -302,6 +360,86 @@ def show_employee_dashboard():
 
     logout_button = tk.Button(root, text="Logout", font=("Helvetica", 12), command=logout)
     logout_button.pack(pady=10)
+
+
+def show_add_employee_page():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    label_add_employee = tk.Label(root, text="Tambah Karyawan Baru", font=("Helvetica", 20))
+    label_add_employee.pack(pady=50)
+
+    # Create fields for employee data input
+    username_label = tk.Label(root, text="Username:")
+    username_label.pack(pady=5)
+    username_entry = tk.Entry(root)
+    username_entry.pack(pady=5)
+
+    password_label = tk.Label(root, text="Password:")
+    password_label.pack(pady=5)
+    password_entry = tk.Entry(root, show="*")
+    password_entry.pack(pady=5)
+
+    email_label = tk.Label(root, text="Email:")
+    email_label.pack(pady=5)
+    email_entry = tk.Entry(root)
+    email_entry.pack(pady=5)
+
+    smtp_password_label = tk.Label(root, text="SMTP Password:")
+    smtp_password_label.pack(pady=5)
+    smtp_password_entry = tk.Entry(root, show="*")
+    smtp_password_entry.pack(pady=5)
+
+    # Hardcode the role as 'employee'
+    role = "employee"
+
+    def add_employee_to_db():
+        username = username_entry.get()
+        password = password_entry.get()
+        email = email_entry.get()
+        smtp_password = smtp_password_entry.get()
+
+        if not username or not password or not email or not smtp_password:
+            messagebox.showwarning("Input Error", "Semua field harus diisi!")
+            return
+
+        conn = connect_to_db()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+            existing_user = cursor.fetchone()
+
+            if existing_user:
+                # If the username already exists, show an error message
+                messagebox.showwarning("Username Error", "Username sudah digunakan!")
+                conn.close()
+                return
+
+            # Insert new user into the database
+            query = ("INSERT INTO users (username, password, email, smtp_password, role) "
+                     "VALUES (%s, %s, %s, %s, %s)")
+            cursor.execute(query, (username, password, email, smtp_password, role))
+            conn.commit()
+            conn.close()
+
+            # Clear the input fields after successful insert
+            username_entry.delete(0, tk.END)
+            password_entry.delete(0, tk.END)
+            email_entry.delete(0, tk.END)
+            smtp_password_entry.delete(0, tk.END)
+
+            # Show success message
+            messagebox.showinfo("Success", "Karyawan berhasil ditambahkan!")
+
+        # Go back to the dashboard after adding
+        show_admin_dashboard()
+
+    add_employee_button = tk.Button(root, text="Add Employee", font=("Helvetica", 14), command=add_employee_to_db)
+    add_employee_button.pack(pady=20)
+
+    back_button = tk.Button(root, text="Back", font=("Helvetica", 12), command=show_admin_dashboard)
+    back_button.pack(pady=10)
+
 
 def show_read_email_screen():
     global current_page
@@ -371,8 +509,29 @@ def change_page(delta):
     current_page += delta
     show_read_email_screen()
 
+def validate_and_send_email():
+    global entry_attachment, selected_receiver_email, username_label, entry_subject, text_body 
+    subject = entry_subject.get()
+    body = text_body.get("1.0", tk.END).strip()
+    if not subject or not body:
+        tk.messagebox.showwarning("Peringatan", "Subject dan Isi Email tidak boleh kosong!")
+    else:
+        send_email(
+            logged_in_user[3],
+            logged_in_user[4],
+            selected_receiver_email.get(),
+            subject,
+            body,
+            entry_attachment.get()
+        )
+        entry_subject.delete(0, tk.END)
+        text_body.delete("1.0", tk.END)
+        entry_attachment.delete(0, tk.END)
+
+
 def show_send_email_screen():
-    global entry_attachment, selected_receiver_email, username_label
+    global entry_attachment, selected_receiver_email, username_label, entry_subject, text_body 
+
 
     for widget in root.winfo_children():
         widget.destroy()
@@ -409,17 +568,10 @@ def show_send_email_screen():
     button_browse.pack(pady=5)
 
     button_send_email = tk.Button(
-        root, 
-        text="Kirim Email", 
-        font=("Helvetica", 14), 
-        command=lambda: send_email(
-            logged_in_user[3], 
-            logged_in_user[4], 
-            selected_receiver_email.get(), 
-            entry_subject.get(), 
-            text_body.get("1.0", tk.END), 
-            entry_attachment.get()
-        )
+        root,
+        text="Kirim Email",
+        font=("Helvetica", 14),
+        command=validate_and_send_email
     )
     button_send_email.pack(pady=20)
 
@@ -431,7 +583,9 @@ def show_send_email_screen():
 
 def logout():
     global logged_in_user
+    global current_page
     logged_in_user = None
+    current_page = 1
     for widget in root.winfo_children():
         widget.destroy()
     show_login_screen()
