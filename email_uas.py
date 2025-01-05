@@ -18,6 +18,7 @@ load_dotenv()
 current_page = 1
 emails_per_page = 10
 email_history = []
+mail = None
 
 def connect_to_db():
     try:
@@ -53,6 +54,7 @@ def attempt_login():
     username = entry_username.get()
     password = entry_password.get()
     user = login(username, password) 
+    global mail
 
     if user:
         try:
@@ -70,10 +72,24 @@ def attempt_login():
         if role == "admin":
             show_admin_dashboard()
         else:
+            mail = access_email(user[3], user[4])
+            if isinstance(mail, str):
+                print(f"Error: {mail}")
+                return
+            else:
+                print(f"Terhubung ke email {mail}")
             show_employee_dashboard()
     else:
         ctk.CTkMessageBox.show_error("Login Error", "Username atau password salah")
 
+def access_email(email_user, email_pass):
+    try:
+        mail = imaplib.IMAP4_SSL(os.getenv("IMAP_SERVER"), os.getenv("IMAP_PORT"))
+        mail.login(email_user, email_pass)
+        return mail
+    except Exception as e:
+        return str(e)
+    
 def get_employee():
     conn = connect_to_db()
     cursor = conn.cursor()
@@ -88,6 +104,115 @@ def filter_emails(search_term, all_emails, listbox):
     filtered_emails = [email for email in all_emails if search_term.lower() in email.lower()]
     for email in filtered_emails:
         listbox.insert('end', email)
+
+def fetch_inbox(mail, page=1, emails_per_page=10):
+    mail.select("inbox")  # Select inbox folder
+    _, data = mail.search(None, "ALL")  # Search all emails
+    email_ids = data[0].split()
+
+    total_emails = len(email_ids)
+    total_pages = (total_emails + emails_per_page - 1) // emails_per_page  # Calculate total pages
+
+    # Determine the range of email IDs for the current page
+    start_idx = total_emails - (page * emails_per_page)
+    end_idx = start_idx + emails_per_page
+
+    if start_idx < 0:
+        start_idx = 0
+
+    paginated_ids = email_ids[start_idx:end_idx]
+
+    emails = []
+    for e_id in paginated_ids:
+        e_id = e_id.decode()
+        print(f"Fetching email with ID: {e_id}")
+        _, data = mail.fetch(e_id, "(RFC822)")
+        if _ == "OK":
+            raw_email = data[0][1]  # Raw email data from fetch
+            msg = email.message_from_bytes(raw_email)
+
+            # Extract email details
+            subject = msg["subject"]
+            sender = msg["from"]
+            time = msg["date"]  # Extract time (date)
+            emails.append({"id": e_id, "from": sender, "subject": subject, "time": time})
+        else:
+            print(f"Failed to fetch email with ID: {e_id}")
+
+    emails.reverse()  # Reverse to show newest first
+    return {
+        "emails": emails,
+        "page": page,
+        "total_pages": total_pages,
+    }
+    
+def show_email_messages(mail, email_id):
+    try:
+        _, data = mail.fetch(email_id, "(RFC822)")
+        raw_email = data[0][1]
+        msg = email.message_from_bytes(raw_email)
+
+        subject = msg["subject"] or "(No Subject)"
+        sender = msg["from"]
+        date = msg["date"]
+        attachments = []
+
+        # Proses email untuk mendapatkan konten teks dan lampiran
+        email_content = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    email_content = part.get_payload(decode=True).decode()
+                elif part.get_content_disposition() == "attachment":
+                    filename = part.get_filename()
+                    if filename:
+                        # Menambahkan lampiran ke daftar
+                        attachments.append((filename, part.get_payload(decode=True)))
+        else:
+            email_content = msg.get_payload(decode=True).decode()
+
+        # Membersihkan tampilan sebelumnya
+        for widget in root.winfo_children():
+            widget.destroy()
+
+        label_subject = ctk.CTkLabel(root, text=f"Subjek: {subject}", font=("Helvetica", 15))
+        label_subject.pack(pady=5)
+
+        label_sender = ctk.CTkLabel(root, text=f"Dari: {sender}", font=("Helvetica", 12))
+        label_sender.pack(pady=5)
+
+        label_date = ctk.CTkLabel(root, text=f"Tanggal: {date}", font=("Helvetica", 12))
+        label_date.pack(pady=5)
+
+        # Menampilkan daftar lampiran dengan tombol untuk membuka
+        if attachments:
+            label_attachments = ctk.CTkLabel(root, text="Lampiran:", font=("Helvetica", 12))
+            label_attachments.pack(pady=5)
+
+            for filename, filedata in attachments:
+                button_attachment = ctk.CTkButton(
+                    root,
+                    text=f"Buka Lampiran: {filename}",
+                    command=lambda data=filedata, name=filename: open_attachment(data, name),
+                )
+                button_attachment.pack(pady=2)
+        else:
+            label_no_attachments = ctk.CTkLabel(root, text="Lampiran: Tidak ada", font=("Helvetica", 12))
+            label_no_attachments.pack(pady=5)
+
+        # Menampilkan konten email
+        text_content = Text(root, wrap=WORD)  # Gunakan widget Text bawaan tkinter
+        text_content.insert("1.0", email_content)  # Gunakan indeks tkinter
+        text_content.configure(state="disabled", font=("Helvetica", 12))  # Atur font di sini
+        text_content.pack(fill=BOTH, expand=True, padx=10, pady=10)
+
+        # Tombol kembali ke dashboard
+        button_back = ctk.CTkButton(root, text="Kembali", font=("Helvetica", 12), command=show_employee_dashboard)
+        button_back.pack(pady=10)
+
+    except Exception as e:
+        messagebox.showerror("Error", f"Gagal menampilkan pesan: {e}")
+
 
 def send_email(recipient_email, subject, body, attachment_path=None):
     try:
@@ -109,7 +234,7 @@ def send_email(recipient_email, subject, body, attachment_path=None):
             attachment.add_header('Content-Disposition', f'attachment; filename={os.path.basename(attachment_path)}')
             msg.attach(attachment)
 
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server = smtplib.SMTP((os.getenv("SMTP_SERVER"), os.getenv("SMTP_PORT")))# tambahkan envnya disini
         server.starttls()
         server.login(sender_email, sender_password)
         text = msg.as_string()
@@ -321,11 +446,82 @@ def show_admin_dashboard():
     read_history_button.pack(pady=20)
 
 def show_employee_dashboard():
+    global current_page, emails_per_page
+
+    # Clear previous widgets
     for widget in root.winfo_children():
         widget.destroy()
 
+    # Top frame with logout button
+    frame_top = ctk.CTkFrame(root)
+    frame_top.pack(pady=10)
+
+    button_logout = ctk.CTkButton(frame_top, text="Logout", font=("Helvetica", 12), command=logout)
+    button_logout.pack(pady=5)
+
     label_dashboard = ctk.CTkLabel(root, text="Karyawan Dashboard\nSelamat datang, Karyawan!", font=("Helvetica", 20))
-    label_dashboard.pack(pady=50)
+    label_dashboard.pack(pady=30)
+
+    # Function to update inbox
+    def update_inbox():
+        result = fetch_inbox(mail, page=current_page, emails_per_page=emails_per_page)
+        emails = result["emails"]
+        total_pages = result["total_pages"]
+
+        inboxlist.delete(*inboxlist.get_children())
+
+        for email_data in emails:
+            inboxlist.insert("", END, values=(email_data["from"], email_data["subject"], email_data["time"]), tags=(email_data["id"],))
+
+        button_previous.configure(state=("normal" if current_page > 1 else "disabled"))
+        button_next.configure(state=("normal" if current_page < total_pages else "disabled"))
+
+    # Pagination controls
+    def next_page():
+        global current_page
+        current_page += 1
+        update_inbox()
+
+    def previous_page():
+        global current_page
+        current_page -= 1
+        update_inbox()
+
+    # Pagination buttons
+    frame_buttons = ctk.CTkFrame(root)
+    frame_buttons.pack(pady=10)
+
+    button_previous = ctk.CTkButton(frame_buttons, text="Previous", font=("Helvetica", 12), command=previous_page)
+    button_previous.pack(side=LEFT, padx=5)
+
+    button_next = ctk.CTkButton(frame_buttons, text="Next", font=("Helvetica", 12), command=next_page)
+    button_next.pack(side=LEFT, padx=5)
+
+    # Treeview to display inbox
+    inboxlist = ttk.Treeview(root, columns=("from", "subject", "time"), show="headings", height=15)
+    inboxlist.pack(side=LEFT, fill=BOTH, expand=True, pady=10)
+
+    # Define column headers
+    inboxlist.heading("from", text="From")
+    inboxlist.heading("subject", text="Subject")
+    inboxlist.heading("time", text="Time")
+
+    # Define column width
+    inboxlist.column("from", width=150)
+    inboxlist.column("subject", width=300)
+    inboxlist.column("time", width=100)
+
+    # Bind item selection to email detail view
+    def on_select(event):
+        selection = inboxlist.selection()
+        if selection:
+            selected_item = selection[0]
+            email_id = inboxlist.item(selected_item, "tags")[0]
+            show_email_messages(mail, email_id)
+
+    inboxlist.bind("<<TreeviewSelect>>", on_select)
+
+    update_inbox()
     
     
 def show_send_email_screen():
@@ -517,6 +713,16 @@ def show_login_screen():
     submit_button = ctk.CTkButton(root, text="SUBMIT", font=("Helvetica", 14), command=attempt_login)
     submit_button.pack(pady=20)
 
+def logout():
+    global mail, email_history
+    global current_page
+    current_page = 1
+    email_history = []
+    mail = None
+    for widget in root.winfo_children():
+        widget.destroy()
+    show_login_screen()
+    
 ctk.set_appearance_mode("dark") 
 ctk.set_default_color_theme("blue")  # Pilihan tema: "blue", "green", "dark-blue"
 
