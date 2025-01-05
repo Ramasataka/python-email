@@ -12,7 +12,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from email.header import decode_header
-from tkinter import Tk, BOTH, LEFT, END, WORD, Text
+from tkinter import  BOTH, LEFT, END, WORD, Text
 
 load_dotenv()
 current_page = 1
@@ -272,7 +272,7 @@ def read_sent_email_history():
         end = start + emails_per_page
 
         email_history = []
-        for email_id in reversed(email_ids[start:end]):
+        for email_id in (email_ids[start:end]):
             status, msg_data = imap.fetch(email_id, "(RFC822)")
             if status != "OK":
                 continue
@@ -295,7 +295,6 @@ def read_sent_email_history():
             show_email_list(imap, email_history, total_emails)
         else:
             messagebox.showinfo("Info", "Tidak ada email terkirim yang ditemukan.")
-
     except Exception as e:
         messagebox.showerror("Error", f"Gagal membaca riwayat email: {str(e)}")
 
@@ -535,18 +534,22 @@ def show_send_email_screen():
     for widget in root.winfo_children():
         widget.destroy()
 
-    label_title = ctk.CTkLabel(root, text="Kirim Email", font=("Helvetica", 20))
+
+    scrollable_root = ctk.CTkScrollableFrame(root, width=800, height=600)
+    scrollable_root.pack(fill="both", expand=True, padx=10, pady=10)
+
+    label_title = ctk.CTkLabel(scrollable_root, text="Kirim Email", font=("Helvetica", 20))
     label_title.pack(pady=20)
 
     employees = get_employee()
     search_var = ctk.StringVar()
 
     # Frame utama untuk membagi tampilan kiri dan kanan
-    main_frame = ctk.CTkScrollableFrame(root)
+    main_frame = ctk.CTkFrame(scrollable_root)
     main_frame.pack(pady=10, padx=10, fill="both", expand=True)
 
     # Frame kiri untuk hasil pencarian email
-    frame_left = ctk.CTkFrame(main_frame, width=200)
+    frame_left = ctk.CTkFrame(main_frame)
     frame_left.pack(side="left", padx=5, fill="y")
 
     label_search = ctk.CTkLabel(frame_left, text="Cari Email:", font=("Helvetica", 14))
@@ -643,24 +646,24 @@ def show_send_email_screen():
     display_emails    # Default frame kosong
 
     # Input subject dan body email
-    label_subject = ctk.CTkLabel(root, text="Subject", font=("Helvetica", 14))
+    label_subject = ctk.CTkLabel(scrollable_root, text="Subject", font=("Helvetica", 14))
     label_subject.pack(pady=5)
-    entry_subject = ctk.CTkEntry(root, font=("Helvetica", 14))
+    entry_subject = ctk.CTkEntry(scrollable_root, font=("Helvetica", 14))
     entry_subject.pack(pady=5)
 
-    label_body = ctk.CTkLabel(root, text="Isi Email", font=("Helvetica", 14))
+    label_body = ctk.CTkLabel(scrollable_root, text="Isi Email", font=("Helvetica", 14))
     label_body.pack(pady=5)
-    text_body = ctk.CTkTextbox(root, height=120, width=600, font=("Helvetica", 12))  # Perbesar ukuran teks
+    text_body = ctk.CTkTextbox(scrollable_root, height=120, width=600, font=("Helvetica", 12))  # Perbesar ukuran teks
     text_body.pack(pady=10)
 
     # File attachment
-    label_attachment = ctk.CTkLabel(root, text="Lampiran", font=("Helvetica", 14))
+    label_attachment = ctk.CTkLabel(scrollable_root, text="Lampiran", font=("Helvetica", 14))
     label_attachment.pack(pady=5)
 
-    label_attachment_path = ctk.CTkLabel(root, text="Tidak ada file yang dipilih", font=("Helvetica", 12), anchor="w")
+    label_attachment_path = ctk.CTkLabel(scrollable_root, text="Tidak ada file yang dipilih", font=("Helvetica", 12), anchor="w")
     label_attachment_path.pack(pady=5)
 
-    button_browse = ctk.CTkButton(root, text="Browse", font=("Helvetica", 12), command=browse_file)
+    button_browse = ctk.CTkButton(scrollable_root, text="Browse", font=("Helvetica", 12), command=browse_file)
     button_browse.pack(pady=5)
 
     def send_email_action():
@@ -693,10 +696,10 @@ def show_send_email_screen():
         entry_subject.delete(0, "end")
         text_body.delete("1.0", "end")
         label_attachment_path.configure(text="Tidak ada file yang dipilih")
-    button_send_email = ctk.CTkButton(root, text="Kirim Email", font=("Helvetica", 14), command=send_email_action)
+    button_send_email = ctk.CTkButton(scrollable_root, text="Kirim Email", font=("Helvetica", 14), command=send_email_action)
     button_send_email.pack(pady=20)
 
-    button_back = ctk.CTkButton(root, text="Kembali", font=("Helvetica", 12), command=show_admin_dashboard)
+    button_back = ctk.CTkButton(scrollable_root, text="Kembali", font=("Helvetica", 12), command=show_admin_dashboard)
     button_back.pack(pady=10)
 
 
@@ -746,6 +749,7 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")  # Pilihan tema: "blue", "green", "dark-blue"
 
 root = ctk.CTk()
+
 root.title("Company Email System")
 root.geometry("400x500")
 
