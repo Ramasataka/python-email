@@ -65,7 +65,7 @@ def attempt_login():
             mail.login(user_email, smtp_password)  
             print(f"Terhubung ke email: {user_email}")
         except imaplib.IMAP4.error as e:
-            ctk.CTkMessageBox.show_error("Email Error", f"Gagal login ke email: {str(e)}")
+            messagebox.showerror("Email Error", f"Gagal login ke email: {str(e)}")
             return
 
         role = user[5] 
@@ -80,7 +80,7 @@ def attempt_login():
                 print(f"Terhubung ke email {mail}")
             show_employee_dashboard()
     else:
-        ctk.CTkMessageBox.show_error("Login Error", "Username atau password salah")
+        messagebox.showerror("Login Error", "Username atau password salah")
 
 def access_email(email_user, email_pass):
     try:
@@ -215,36 +215,36 @@ def show_email_messages(mail, email_id):
 
 
 def send_email(recipient_email, subject, body, attachment_path=None):
-    try:
-        sender_email = user[3]  
-        sender_password = user[4]
+    
+        try:
+            sender_email = user[3]  
+            sender_password = user[4]
 
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient_email if isinstance(recipient_email, str) else ', '.join(recipient_email)
-        msg['Subject'] = subject
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = recipient_email if isinstance(recipient_email, str) else ', '.join(recipient_email)
+            msg['Subject'] = subject
 
-        msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(body, 'plain'))
 
-        if attachment_path:
-            attachment = MIMEBase('application', 'octet-stream')
-            with open(attachment_path, 'rb') as attachment_file:
-                attachment.set_payload(attachment_file.read())
-            encoders.encode_base64(attachment)
-            attachment.add_header('Content-Disposition', f'attachment; filename={os.path.basename(attachment_path)}')
-            msg.attach(attachment)
+            if attachment_path:
+                attachment = MIMEBase('application', 'octet-stream')
+                with open(attachment_path, 'rb') as attachment_file:
+                    attachment.set_payload(attachment_file.read())
+                encoders.encode_base64(attachment)
+                attachment.add_header('Content-Disposition', f'attachment; filename={os.path.basename(attachment_path)}')
+                msg.attach(attachment)
 
-        server = smtplib.SMTP((os.getenv("SMTP_SERVER"), os.getenv("SMTP_PORT")))# tambahkan envnya disini
-        server.starttls()
-        server.login(sender_email, sender_password)
-        text = msg.as_string()
-        server.sendmail(sender_email, recipient_email if isinstance(recipient_email, str) else recipient_email, text)
-        server.quit()
+            server = smtplib.SMTP(os.getenv("SMTP_SERVER"), os.getenv("SMTP_PORT"))# tambahkan envnya disini
+            server.starttls()
+            server.login(sender_email, sender_password)
+            text = msg.as_string()
+            server.sendmail(sender_email, recipient_email if isinstance(recipient_email, str) else recipient_email, text)
+            server.quit()
 
-        messagebox.showinfo("Sukses", f"Email berhasil dikirim ke {recipient_email}!")
-    except Exception as e:
-        messagebox.showerror("Gagal", f"Gagal mengirim email ke {recipient_email}: {str(e)}")
-
+            messagebox.showinfo("Sukses", f"Email berhasil dikirim ke {recipient_email}!")
+        except Exception as e:
+            messagebox.showerror("Gagal", f"Gagal mengirim email ke {recipient_email}: {str(e)}")
 
 def read_sent_email_history():
     global current_page
@@ -435,7 +435,7 @@ def open_attachment(attachment_data, filename):
 def show_admin_dashboard():
     for widget in root.winfo_children():
         widget.destroy()
-
+        
     label_dashboard = ctk.CTkLabel(root, text="Admin Dashboard\nSelamat datang, Admin!", font=("Helvetica", 20))
     label_dashboard.pack(pady=50)
 
@@ -444,6 +444,12 @@ def show_admin_dashboard():
     
     read_history_button = ctk.CTkButton(root, text="Read History Send Email", font=("Helvetica", 14), command=read_sent_email_history)
     read_history_button.pack(pady=20)
+    
+    frame_logout = ctk.CTkFrame(root)
+    frame_logout.pack(pady=10)
+
+    button_logout = ctk.CTkButton(frame_logout, text="Logout", font=("Helvetica", 12), command=logout)
+    button_logout.pack(pady=5)
 
 def show_employee_dashboard():
     global current_page, emails_per_page
@@ -536,7 +542,7 @@ def show_send_email_screen():
     search_var = ctk.StringVar()
 
     # Frame utama untuk membagi tampilan kiri dan kanan
-    main_frame = ctk.CTkFrame(root)
+    main_frame = ctk.CTkScrollableFrame(root)
     main_frame.pack(pady=10, padx=10, fill="both", expand=True)
 
     # Frame kiri untuk hasil pencarian email
@@ -634,7 +640,7 @@ def show_send_email_screen():
             display_emails(filtered_emails)
 
     search_var.trace_add("write", on_search)
-    display_emails([])  # Default frame kosong
+    display_emails    # Default frame kosong
 
     # Input subject dan body email
     label_subject = ctk.CTkLabel(root, text="Subject", font=("Helvetica", 14))
@@ -662,23 +668,36 @@ def show_send_email_screen():
             messagebox.showerror("Error", "Tidak ada email yang dipilih.")
             return
 
-        subject = entry_subject.get()
+        subject = entry_subject.get().strip()
         body = text_body.get("1.0", "end").strip()
         attachment_path = label_attachment_path.cget("text")
+
+        # Check if subject and body are not empty
+        if not subject:
+            messagebox.showerror("Error", "Subject tidak boleh kosong.")
+            return
+        
+        if not body:
+            messagebox.showerror("Error", "Isi email tidak boleh kosong.")
+            return
 
         if attachment_path == "Tidak ada file yang dipilih":
             attachment_path = None
 
+        
         for email in selected_emails:
             send_email(email, subject, body, attachment_path)
 
+        selected_emails.clear()
+        update_selected_emails()
+        entry_subject.delete(0, "end")
+        text_body.delete("1.0", "end")
+        label_attachment_path.configure(text="Tidak ada file yang dipilih")
     button_send_email = ctk.CTkButton(root, text="Kirim Email", font=("Helvetica", 14), command=send_email_action)
     button_send_email.pack(pady=20)
 
     button_back = ctk.CTkButton(root, text="Kembali", font=("Helvetica", 12), command=show_admin_dashboard)
     button_back.pack(pady=10)
-
-
 
 
 
